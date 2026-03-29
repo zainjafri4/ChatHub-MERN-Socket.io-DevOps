@@ -8,8 +8,6 @@
 
 <br/>
 
-[![Backend CI/CD](https://img.shields.io/github/actions/workflow/status/zainjafri4/ChatHub-MERN-Socket.io-DevOps/backend.yml?label=Backend%20CI%2FCD&style=for-the-badge&logo=github-actions&logoColor=white)](https://github.com/zainjafri4/ChatHub-MERN-Socket.io-DevOps/.github/workflows/backend.yml)
-[![Frontend CI/CD](https://img.shields.io/github/actions/workflow/status/zainjafri4/ChatHub-MERN-Socket.io-DevOps/frontend.yml?label=Frontend%20CI%2FCD&style=for-the-badge&logo=github-actions&logoColor=white&color=38bdf8)](https://github.com/zainjafri4/ChatHub-MERN-Socket.io-DevOps/.github/workflows/frontend.yml)
 [![Terraform](https://img.shields.io/badge/IaC-Terraform-7B42BC?style=for-the-badge&logo=terraform&logoColor=white)](https://www.terraform.io/)
 [![AWS ECS](https://img.shields.io/badge/AWS-ECS%20EC2-FF9900?style=for-the-badge&logo=amazonecs&logoColor=white)](https://aws.amazon.com/ecs/)
 [![Docker](https://img.shields.io/badge/Container-Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
