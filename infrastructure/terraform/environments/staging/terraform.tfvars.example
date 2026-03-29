@@ -1,0 +1,9 @@
+# Copy to terraform.tfvars — NEVER commit terraform.tfvars
+
+aws_region = "us-east-1"
+vpc_cidr   = "10.0.0.0/16"
+image_tag  = "latest"
+
+# Set to true after creating the GitHub OIDC provider in your AWS account
+create_github_oidc_role = false
+github_repo             = "zainjafri4/ChatHub-MERN-DevOps"

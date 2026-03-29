@@ -1,0 +1,168 @@
+# ─────────────────────────────────────────────────────────────
+#  ChatHub — Backend CI/CD
+#
+#  Triggers ONLY when files inside backend/ change.
+#  Frontend changes will never cause this pipeline to run.
+#
+#  push main    → CI + deploy to PRODUCTION
+#  push develop → CI + deploy to STAGING
+#  pull_request → CI only (lint · build · scan)
+# ─────────────────────────────────────────────────────────────
+
+name: Backend CI/CD
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend.yml'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend.yml'
+
+concurrency:
+  group: backend-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  AWS_REGION:   ${{ secrets.AWS_REGION }}
+  NODE_VERSION: '18'
+
+# ── Job 1: CI ──────────────────────────────────────────────────
+jobs:
+  ci:
+    name: CI — Lint · Build · Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: backend
+
+      - name: Lint
+        run: npm run lint --if-present
+        working-directory: backend
+        continue-on-error: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build backend image (multi-stage)
+        uses: docker/build-push-action@v5
+        with:
+          context:    ./backend
+          push:       false
+          tags:       chathub-backend:${{ github.sha }}
+          cache-from: type=gha,scope=backend
+          cache-to:   type=gha,scope=backend,mode=max
+          load:       true
+
+      - name: Scan with Trivy (CRITICAL + HIGH only)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref:      chathub-backend:${{ github.sha }}
+          format:         table
+          exit-code:      '1'
+          ignore-unfixed: true
+          vuln-type:      os,library
+          severity:       CRITICAL,HIGH
+
+# ── Job 2: Deploy ──────────────────────────────────────────────
+  deploy:
+    name: Deploy — ${{ github.ref == 'refs/heads/main' && 'Production' || 'Staging' }}
+    runs-on: ubuntu-latest
+    needs: ci
+    if: github.event_name == 'push'
+    environment: ${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
+
+    permissions:
+      id-token: write
+      contents: read
+
+    env:
+      ENVIRONMENT: ${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/github-actions-chathub-${{ env.ENVIRONMENT }}
+          aws-region:     ${{ secrets.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Compute image tag
+        id: tag
+        run: |
+          SHORT_SHA="${GITHUB_SHA::8}"
+          echo "short_sha=${SHORT_SHA}"                                      >> "$GITHUB_OUTPUT"
+          echo "image=${{ secrets.ECR_BACKEND_REPO }}:${SHORT_SHA}"         >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build & push to ECR
+        uses: docker/build-push-action@v5
+        with:
+          context:  ./backend
+          push:     true
+          tags: |
+            ${{ steps.tag.outputs.image }}
+            ${{ secrets.ECR_BACKEND_REPO }}:latest
+          cache-from: type=gha,scope=backend
+          cache-to:   type=gha,scope=backend,mode=max
+          build-args: |
+            NODE_ENV=production
+
+      - name: Fetch current task definition
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition chathub-app-${{ env.ENVIRONMENT }} \
+            --query taskDefinition \
+            > task-def.json
+
+      - name: Inject new backend image into combined task definition
+        id: taskdef
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-def.json
+          container-name:  backend
+          image:           ${{ steps.tag.outputs.image }}
+          environment-variables: |
+            NODE_ENV=production
+            PORT=5000
+
+      - name: Deploy to ECS (rolling update)
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition:            ${{ steps.taskdef.outputs.task-definition }}
+          service:                    ${{ secrets.ECS_SERVICE_APP }}
+          cluster:                    ${{ secrets.ECS_CLUSTER_NAME }}
+          wait-for-service-stability: true
+
+      - name: Deployment summary
+        run: |
+          echo "### ✅ Backend Deployed" >> "$GITHUB_STEP_SUMMARY"
+          echo "| | |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Environment** | \`${{ env.ENVIRONMENT }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Image** | \`${{ steps.tag.outputs.image }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Commit** | \`${{ steps.tag.outputs.short_sha }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Triggered by** | @${{ github.actor }} |" >> "$GITHUB_STEP_SUMMARY"

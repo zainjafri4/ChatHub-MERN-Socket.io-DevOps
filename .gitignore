@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+
+# Environment files — NEVER commit real credentials
+.env
+.env.local
+.env.*.local
+backend/.env
+frontend/.env
+
+# Build outputs
+dist/
+build/
+frontend/dist/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Terraform state — using S3 remote state instead
+*.tfstate
+*.tfstate.backup
+.terraform/
+.terraform.lock.hcl

@@ -1,0 +1,8 @@
+# Copy to terraform.tfvars — NEVER commit terraform.tfvars
+
+aws_region = "us-east-1"
+vpc_cidr   = "10.0.0.0/16"
+image_tag  = "latest"
+
+create_github_oidc_role = true
+github_repo             = "zainjafri4/ChatHub-MERN-DevOps"
